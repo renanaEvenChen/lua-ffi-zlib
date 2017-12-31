@@ -23,7 +23,6 @@ end
 -- get the gzip header size from file gzf
 --https://www.ietf.org/rfc/rfc1952.txt
 local function gzhead(gzf)
-lua-zlib
     local flags
     local size = 10
 
