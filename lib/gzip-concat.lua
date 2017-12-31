@@ -106,7 +106,7 @@ function gz_concat(str, gz)
 
     local gz_str = table_concat(output_table,'')
     local head_size = gzhead(gz)
-    return gz_str..string.sub(head_size+1, 11, -1)
+    return gz_str..string.sub(gz, head_size+1, -1)
 
 end
 
