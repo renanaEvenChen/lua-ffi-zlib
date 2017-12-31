@@ -102,6 +102,7 @@ _M.zlib = zlib
 local DEFAULT_CHUNK = 16384
 
 local Z_OK           = zlib.Z_OK
+local Z_SYNC_FLUSH   = zlib.Z_SYNC_FLUSH
 local Z_NO_FLUSH     = zlib.Z_NO_FLUSH
 local Z_STREAM_END   = zlib.Z_STREAM_END
 local Z_FINISH       = zlib.Z_FINISH
@@ -212,13 +213,18 @@ local function inflate(input, output, bufsize, stream, inbuf, outbuf)
 end
 _M.inflate = inflate
 
-local function deflate(input, output, bufsize, stream, inbuf, outbuf)
+local function deflate(input, output, bufsize, stream, inbuf, outbuf, flushMode)
     local zlib_flate = zlib.deflate
     local zlib_flateEnd = zlib.deflateEnd
 
     -- Deflate a stream
     local err = 0
     local mode = Z_NO_FLUSH
+    local ending_mode = Z_FINISH
+    local deflate_end = false
+    if flushMode then
+      ending_mode = flushMode
+    end
     repeat
         -- Read some input
         local data = input(bufsize)
@@ -227,7 +233,7 @@ local function deflate(input, output, bufsize, stream, inbuf, outbuf)
             stream.next_in, stream.avail_in = inbuf, #data
         else
             -- EOF, try and finish up
-            mode = Z_FINISH
+            mode = ending_mode
             stream.avail_in = 0
         end
 
@@ -255,7 +261,13 @@ local function deflate(input, output, bufsize, stream, inbuf, outbuf)
             return false, "DEFLATE: Input not used"
         end
 
-    until err == Z_STREAM_END
+        if ending_mode == Z_SYNC_FLUSH then
+          deflate_end = data == nil
+        else
+          deflate_end = err == Z_STREAM_END
+        end
+
+    until deflate_end
 
     -- Stream finished, clean up and return
     zlib_flateEnd(stream)
@@ -294,7 +306,7 @@ function _M.inflateGzip(input, output, bufsize, windowBits)
     end
 end
 
-function _M.deflateGzip(input, output, bufsize, options)
+function _M.deflateGzip(input, output, flushMode, bufsize, options )
     local bufsize = bufsize or DEFAULT_CHUNK
     options = options or {}
 
@@ -304,7 +316,7 @@ function _M.deflateGzip(input, output, bufsize, options)
 
     local init = initDeflate(stream, options)
     if init == Z_OK then
-        return deflate(input, output, bufsize, stream, inbuf, outbuf)
+        return deflate(input, output, bufsize, stream, inbuf, outbuf, flushMode)
     else
         -- Init error
         zlib.deflateEnd(stream)
