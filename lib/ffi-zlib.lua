@@ -163,9 +163,13 @@ local function flushOutput(stream, bufsize, output, outbuf)
     output(ffi_str(outbuf, out_sz))
 end
 
-local function inflate(input, output, bufsize, stream, inbuf, outbuf)
+local function inflate(input, output, bufsize, stream, inbuf, outbuf, flushMode, streaming)
     local zlib_flate = zlib.inflate
     local zlib_flateEnd = zlib.inflateEnd
+    local mode = Z_NO_FLUSH
+    if flushMode then
+      mode = flushMode
+    end
     -- Inflate a stream
     local err = 0
     repeat
@@ -179,18 +183,19 @@ local function inflate(input, output, bufsize, stream, inbuf, outbuf)
             stream.avail_in = 0
         end
 
-        if stream.avail_in == 0 then
+        if stream.avail_in == 0 and not streaming then
             -- When decompressing we *must* have input bytes
             zlib_flateEnd(stream)
             return false, "INFLATE: Data error, no input bytes"
         end
 
         -- While the output buffer is being filled completely just keep going
+        if mode == Z_FINISH or data ~= nil then
         repeat
             stream.next_out  = outbuf
             stream.avail_out = bufsize
             -- Process the stream, always Z_NO_FLUSH in inflate mode
-            err = zlib_flate(stream, Z_NO_FLUSH)
+            err = zlib_flate(stream, mode)
 
             -- Buffer errors are OK here
             if err == Z_BUF_ERROR then
@@ -204,11 +209,14 @@ local function inflate(input, output, bufsize, stream, inbuf, outbuf)
             -- Write the data out
             flushOutput(stream, bufsize, output, outbuf)
         until stream.avail_out ~= 0
+      end
 
-    until err == Z_STREAM_END
+    until data == nil or err == Z_STREAM_END
 
     -- Stream finished, clean up and return
+  if mode == Z_FINISH  then
     zlib_flateEnd(stream)
+  end
     return true, zlib_err(err)
 end
 _M.inflate = inflate
